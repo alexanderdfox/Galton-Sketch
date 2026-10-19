@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galton-Sketch: Multi-Target Arcade</title>
+    <style>
+        :root {
+            --bg-color: #1a1a24;
+            --toy-body: #2c2c38;
+            --toy-border: #444458;
+            --screen-bg: #0f111a;
+            --accent-gold: #f39c12;
+            --accent-blue: #3498db;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 15px;
+            color: #ecf0f1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            letter-spacing: 2px;
+            color: var(--accent-gold);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* HUD & Game Stats Bar */
+        .hud {
+            display: flex;
+            gap: 20px;
+            background: rgba(255,255,255,0.05);
+            padding: 8px 20px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .hud span {
+            color: var(--accent-gold);
+        }
+
+        /* Toy Frame */
+        .toy-container {
+            background: var(--toy-body);
+            border: 8px solid var(--toy-border);
+            border-radius: 25px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 3px 8px rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            max-width: 820px;
+            width: 100%;
+        }
+
+        /* Screen Wrapper */
+        .screen-container {
+            position: relative;
+            background: var(--screen-bg);
+            border: 10px solid #1e222f;
+            border-radius: 12px;
+            box-shadow: inset 5px 5px 25px rgba(0,0,0,0.8), 0 3px 10px rgba(0,0,0,0.4);
+            overflow: hidden;
+            width: 750px;
+            height: 480px;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Controls Section */
+        .controls-panel {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding: 0 10px;
+        }
+
+        .knob-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .knob-label {
+            color: #bdc3c7;
+            font-weight: bold;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+        }
+
+        .knob {
+            width: 65px;
+            height: 65px;
+            background: radial-gradient(circle at 30% 30%, #ffffff, #bdc3c7 60%, #7f8c8d);
+            border-radius: 50%;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.4), inset 0 -3px 5px rgba(0,0,0,0.4);
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.05s ease-out;
+        }
+
+        .knob::after {
+            content: '';
+            position: absolute;
+            top: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 5px;
+            height: 5px;
+            background: #2c3e50;
+            border-radius: 50%;
+        }
+
+        /* Dashboard */
+        .center-dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: rgba(0,0,0,0.25);
+            padding: 8px 15px;
+            border-radius: 12px;
+            align-items: center;
+        }
+
+        .dashboard-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 3px 0 #2980b9;
+            transition: all 0.1s ease;
+            font-size: 0.8rem;
+        }
+
+        .btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 0 0 #2980b9;
+        }
+
+        .btn-drop {
+            background: #27ae60;
+            box-shadow: 0 3px 0 #1e8449;
+        }
+
+        /* Color Selector */
+        .color-selector {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .color-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid rgba(255,255,255,0.4);
+            transition: transform 0.1s;
+        }
+
+        .color-dot:hover, .color-dot.active {
+            transform: scale(1.25);
+            border-color: #fff;
+            box-shadow: 0 0 8px rgba(255,255,255,0.8);
+        }
+
+        /* Modal Overlay */
+        .modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 17, 26, 0.88);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .modal h2 {
+            font-size: 2.2rem;
+            color: var(--accent-gold);
+            margin-bottom: 10px;
+        }
+
+        .modal p {
+            font-size: 1rem;
+            color: #bdc3c7;
+            max-width: 450px;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .modal button {
+            background: var(--accent-gold);
+            color: #1a1a24;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #b7950b;
+            transition: transform 0.1s;
+        }
+
+        .modal button:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #b7950b;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>GALTON-SKETCH: MULTI-TARGET ARCADE</h1>
+    </div>
+
+    <div class="hud">
+        <div>Level: <span id="currentLevel">1</span> / 5</div>
+        <div>Sand Inventory: <span id="sandCount">40</span></div>
+        <div>Targets Completed: <span id="targetsCompleted">0</span> / <span id="totalTargets">2</span></div>
+    </div>
+
+    <div class="toy-container" id="toyContainer">
+        <div class="screen-container">
+            <canvas id="canvas" width="750" height="480"></canvas>
+
+            <div id="modalOverlay" class="modal">
+                <h2 id="modalTitle">MULTI-TARGET ARCADE</h2>
+                <p id="modalDesc">Fill each distinct color-coded target zone with matching colored sand! Match the sand color to the target box to score points before running out of inventory.</p>
+                <button id="modalBtn">START GAME</button>
+            </div>
+        </div>
+
+        <div class="controls-panel">
+            <div class="knob-group">
+                <div class="knob" id="leftKnob"></div>
+                <span class="knob-label">FUNNEL POSITION</span>
+            </div>
+
+            <div class="center-dashboard">
+                <div class="dashboard-row">
+                    <button class="btn btn-drop" id="btnDrop">Drop Sand (5)</button>
+                    <button class="btn" id="btnClearLevel">Reset Level</button>
+                </div>
+                <div class="color-selector" id="colorSelector">
+                    <!-- Palette -->
+                </div>
+            </div>
+
+            <div class="knob-group">
+                <div class="knob" id="rightKnob"></div>
+                <span class="knob-label">GRAVITY TILT</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        const sandCanvas = document.createElement('canvas');
+        sandCanvas.width = WIDTH;
+        sandCanvas.height = HEIGHT;
+        const sandCtx = sandCanvas.getContext('2d');
+
+        const PEG_RADIUS = 3;
+        const SAND_RADIUS = 3.5;
+        const RESTITUTION = 0.55; 
+        const FRICTION = 0.98;   
+
+        // Game State
+        let level = 1;
+        let sandInventory = 40;
+        let targetZones = [];
+        let pegs = [];
+        let particles = [];
+        let funnelX = WIDTH / 2;
+        let gravityTiltAngle = 0;
+        let gameActive = false;
+
+        let leftKnobAngle = 0;
+        let rightKnobAngle = 0;
+
+        const colors = [
+            { name: 'Neon Pink', hex: '#ff2a6d' },
+            { name: 'Electric Cyan', hex: '#05d9e8' },
+            { name: 'Sunset Orange', hex: '#ff7700' },
+            { name: 'Lime Glow', hex: '#39ff14' },
+            { name: 'Royal Purple', hex: '#b000ff' }
+        ];
+        let currentColor = colors[0].hex;
+
+        // Build Color Palette UI
+        const colorSelectorEl = document.getElementById('colorSelector');
+        colors.forEach((c, idx) => {
+            const dot = document.createElement('div');
+            dot.className = `color-dot ${idx === 0 ? 'active' : ''}`;
+            dot.style.backgroundColor = c.hex;
+            dot.addEventListener('click', () => {
+                document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+                dot.classList.add('active');
+                currentColor = c.hex;
+            });
+            colorSelectorEl.appendChild(dot);
+        });
+
+        // Level Configurations with Multiple Distinct Color Targets
+        const levels = [
+            {
+                sand: 40,
+                targets: [
+                    { x: 120, y: HEIGHT - 75, w: 150, h: 60, color: '#ff2a6d', filled: 0, required: 15 },
+                    { x: 480, y: HEIGHT - 75, w: 150, h: 60, color: '#05d9e8', filled: 0, required: 15 }
+                ],
+                pegLayout: 'standard'
+            },
+            {
+                sand: 45,
+                targets: [
+                    { x: 80, y: HEIGHT - 75, w: 130, h: 60, color: '#39ff14', filled: 0, required: 15 },
+                    { x: 310, y: HEIGHT - 75, w: 130, h: 60, color: '#ff7700', filled: 0, required: 15 },
+                    { x: 540, y: HEIGHT - 75, w: 130, h: 60, color: '#b000ff', filled: 0, required: 15 }
+                ],
+                pegLayout: 'threeWay'
+            },
+            {
+                sand: 50,
+                targets: [
+                    { x: 100, y: HEIGHT - 75, w: 140, h: 60, color: '#ff2a6d', filled: 0, required: 20 },
+                    { x: 510, y: HEIGHT - 75, w: 140, h: 60, color: '#39ff14', filled: 0, required: 20 }
+                ],
+                pegLayout: 'leftBias'
+            },
+            {
+                sand: 55,
+                targets: [
+                    { x: 90, y: HEIGHT - 75, w: 130, h: 60, color: '#05d9e8', filled: 0, required: 20 },
+                    { x: 530, y: HEIGHT - 75, w: 130, h: 60, color: '#ff7700', filled: 0, required: 20 }
+                ],
+                pegLayout: 'rightBias'
+            },
+            {
+                sand: 65,
+                targets: [
+                    { x: 70, y: HEIGHT - 75, w: 120, h: 60, color: '#b000ff', filled: 0, required: 18 },
+                    { x: 315, y: HEIGHT - 75, w: 120, h: 60, color: '#ff2a6d', filled: 0, required: 18 },
+                    { x: 560, y: HEIGHT - 75, w: 120, h: 60, color: '#05d9e8', filled: 0, required: 18 }
+                ],
+                pegLayout: 'labyrinth'
+            }
+        ];
+
+        function loadLevel(lvlNum) {
+            const config = levels[lvlNum - 1];
+            sandInventory = config.sand;
+            targetZones = config.targets.map(t => ({ ...t, filled: 0 }));
+            particles = [];
+
+            sandCtx.fillStyle = '#0f111a';
+            sandCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            pegs = [];
+            const spacingX = 40;
+            const spacingY = 35;
+            const startY = 70;
+            const endY = HEIGHT - 95;
+
+            let rowIdx = 0;
+            for (let y = startY; y < endY; y += spacingY) {
+                const offsetX = (rowIdx % 2 === 0) ? 0 : spacingX / 2;
+                const startX = 40 + offsetX;
+                
+                for (let x = startX; x < WIDTH - 30; x += spacingX) {
+                    if (config.pegLayout === 'leftBias' && x > WIDTH / 2 + 50 && y > 150) continue;
+                    if (config.pegLayout === 'rightBias' && x < WIDTH / 2 - 50 && y > 150) continue;
+                    if (config.pegLayout === 'labyrinth' && (Math.floor(x / 80) % 2 === 0 && y > 140 && y < 300)) continue;
+                    
+                    pegs.push({ x, y });
+                }
+                rowIdx++;
+            }
+
+            updateHUD();
+        }
+
+        function updateHUD() {
+            document.getElementById('currentLevel').textContent = level;
+            document.getElementById('sandCount').textContent = sandInventory;
+            const completedCount = targetZones.filter(t => t.filled >= t.required).length;
+            document.getElementById('targetsCompleted').textContent = completedCount;
+            document.getElementById('totalTargets').textContent = targetZones.length;
+        }
+
+        class SandParticle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 0.6;
+                this.vy = Math.random() * 0.4;
+                this.settled = false;
+            }
+
+            update() {
+                if (this.settled) return;
+
+                const gMag = 0.28;
+                const gx = Math.sin(gravityTiltAngle) * gMag;
+                const gy = Math.cos(gravityTiltAngle) * gMag;
+
+                this.vx += gx;
+                this.vy += gy;
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                const nextX = this.x + this.vx;
+                const nextY = this.y + this.vy;
+
+                sandCtx.beginPath();
+                sandCtx.moveTo(this.x, this.y);
+                sandCtx.lineTo(nextX, nextY);
+                sandCtx.strokeStyle = this.color;
+                sandCtx.lineWidth = SAND_RADIUS * 1.5;
+                sandCtx.lineCap = 'round';
+                sandCtx.stroke();
+
+                this.x = nextX;
+                this.y = nextY;
+
+                for (let peg of pegs) {
+                    const dx = this.x - peg.x;
+                    const dy = this.y - peg.y;
+                    const distSq = dx * dx + dy * dy;
+                    const minDist = SAND_RADIUS + PEG_RADIUS;
+
+                    if (distSq < minDist * minDist) {
+                        const dist = Math.sqrt(distSq);
+                        if (dist === 0) continue;
+
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+                        const overlap = minDist - dist;
+                        this.x += nx * overlap;
+                        this.y += ny * overlap;
+
+                        const normalVelocity = this.vx * nx + this.vy * ny;
+                        if (normalVelocity < 0) {
+                            const impulseScalar = -(1 + RESTITUTION) * normalVelocity;
+                            this.vx += impulseScalar * nx;
+                            this.vy += impulseScalar * ny;
+                            this.vx += (Math.random() - 0.5) * 0.2;
+                        }
+                    }
+                }
+
+                if (this.x - SAND_RADIUS < 15) {
+                    this.x = 15 + SAND_RADIUS;
+                    this.vx = -this.vx * RESTITUTION;
+                } else if (this.x + SAND_RADIUS > WIDTH - 15) {
+                    this.x = WIDTH - 15 - SAND_RADIUS;
+                    this.vx = -this.vx * RESTITUTION;
+                }
+
+                // Check landing in target zones
+                for (let t of targetZones) {
+                    if (this.y >= t.y + 10 && this.x >= t.x && this.x <= t.x + t.w) {
+                        this.y = t.y + 10;
+                        this.settled = true;
+
+                        // Only count if sand color matches target color!
+                        if (this.color === t.color && t.filled < t.required) {
+                            t.filled++;
+                            updateHUD();
+                            checkWinCondition();
+                        }
+                        break;
+                    }
+                }
+
+                // General floor fallback settling if outside target zones
+                if (!this.settled && this.y >= HEIGHT - 15) {
+                    this.y = HEIGHT - 15;
+                    this.settled = true;
+                }
+            }
+
+            draw(targetCtx) {
+                targetCtx.beginPath();
+                targetCtx.arc(this.x, this.y, SAND_RADIUS, 0, Math.PI * 2);
+                targetCtx.fillStyle = this.color;
+                targetCtx.shadowColor = this.color;
+                targetCtx.shadowBlur = 6;
+                targetCtx.fill();
+                targetCtx.shadowBlur = 0;
+            }
+        }
+
+        function checkWinCondition() {
+            const allComplete = targetZones.every(t => t.filled >= t.required);
+            if (allComplete && gameActive) {
+                gameActive = false;
+                showModal(
+                    level < 5 ? "LEVEL COMPLETE!" : "VICTORY!",
+                    level < 5 ? `Amazing color coordination! All target zones are successfully filled.` : `Incredible! You beat all 5 Multi-Target arcade levels!`,
+                    level < 5 ? "NEXT LEVEL" : "PLAY AGAIN"
+                );
+            } else if (sandInventory === 0 && particles.length === 0 && !allComplete) {
+                gameActive = false;
+                showModal("OUT OF SAND", "You ran out of sand before completing all target zones. Try again!", "RETRY LEVEL");
+            }
+        }
+
+        function showModal(title, desc, btnText) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalDesc').textContent = desc;
+            document.getElementById('modalBtn').textContent = btnText;
+            document.getElementById('modalOverlay').classList.remove('hidden');
+        }
+
+        function dropSand(count = 5) {
+            if (!gameActive || sandInventory <= 0) return;
+            const toDrop = Math.min(count, sandInventory);
+            sandInventory -= toDrop;
+            updateHUD();
+
+            for (let i = 0; i < toDrop; i++) {
+                const jitter = (Math.random() - 0.5) * 6;
+                particles.push(new SandParticle(funnelX + jitter, 25, currentColor));
+            }
+        }
+
+        function render() {
+            ctx.drawImage(sandCanvas, 0, 0);
+
+            // Draw Multiple Color-Coded Target Zones
+            for (let t of targetZones) {
+                ctx.save();
+                
+                ctx.fillStyle = '#16192b';
+                ctx.fillRect(t.x, t.y, t.w, t.h);
+
+                ctx.strokeStyle = t.color;
+                ctx.lineWidth = 3;
+                ctx.shadowColor = t.color;
+                ctx.shadowBlur = 10;
+                ctx.strokeRect(t.x, t.y, t.w, t.h);
+                ctx.shadowBlur = 0;
+
+                const fillRatio = Math.min(1, t.filled / t.required);
+                ctx.fillStyle = t.color;
+                ctx.globalAlpha = 0.3;
+                ctx.fillRect(t.x, t.y + t.h * (1 - fillRatio), t.w, t.h * fillRatio);
+                ctx.globalAlpha = 1.0;
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`MATCH COLOR`, t.x + t.w / 2, t.y + 16);
+                
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillStyle = t.color;
+                ctx.fillText(`${t.filled} / ${t.required} GRAINS`, t.x + t.w / 2, t.y + 38);
+
+                ctx.restore();
+            }
+
+            // Draw Pegs
+            for (let peg of pegs) {
+                ctx.beginPath();
+                ctx.arc(peg.x, peg.y, PEG_RADIUS, 0, Math.PI * 2);
+                ctx.fillStyle = '#bdc3c7'; 
+                ctx.fill();
+                ctx.strokeStyle = '#7f8c8d';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // Draw Funnel
+            ctx.save();
+            ctx.translate(funnelX, 15);
+            ctx.rotate(gravityTiltAngle * 0.5);
+            ctx.fillStyle = '#e67e22';
+            ctx.beginPath();
+            ctx.moveTo(-22, -15);
+            ctx.lineTo(22, -15);
+            ctx.lineTo(6, 10);
+            ctx.lineTo(-6, 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#f39c12';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Funnel Color Indicator
+            ctx.fillStyle = currentColor;
+            ctx.beginPath();
+            ctx.arc(0, 10, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Update & Draw particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw(ctx);
+
+                if (p.settled) {
+                    sandCtx.beginPath();
+                    sandCtx.arc(p.x, p.y, SAND_RADIUS, 0, Math.PI * 2);
+                    sandCtx.fillStyle = p.color;
+                    sandCtx.fill();
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        // Controls
+        const leftKnob = document.getElementById('leftKnob');
+        const rightKnob = document.getElementById('rightKnob');
+        let isDraggingLeft = false;
+        let isDraggingRight = false;
+        let lastMouseY = 0;
+        let lastMouseX = 0;
+
+        leftKnob.addEventListener('mousedown', (e) => { isDraggingLeft = true; lastMouseY = e.clientY; });
+        rightKnob.addEventListener('mousedown', (e) => { isDraggingRight = true; lastMouseX = e.clientX; });
+
+        window.addEventListener('mouseup', () => { isDraggingLeft = false; isDraggingRight = false; });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDraggingLeft) {
+                const deltaY = lastMouseY - e.clientY;
+                lastMouseY = e.clientY;
+                leftKnobAngle += deltaY * 3;
+                leftKnob.style.transform = `rotate(${leftKnobAngle}deg)`;
+                funnelX = Math.max(30, Math.min(WIDTH - 30, funnelX + deltaY * 2));
+            }
+            if (isDraggingRight) {
+                const deltaX = e.clientX - lastMouseX;
+                lastMouseX = e.clientX;
+                rightKnobAngle += deltaX * 3;
+                rightKnob.style.transform = `rotate(${rightKnobAngle}deg)`;
+                gravityTiltAngle = Math.max(-0.6, Math.min(0.6, gravityTiltAngle + deltaX * 0.015));
+            }
+        });
+
+        document.getElementById('btnDrop').addEventListener('click', () => dropSand(5));
+        document.getElementById('btnClearLevel').addEventListener('click', () => loadLevel(level));
+
+        document.getElementById('modalBtn').addEventListener('click', () => {
+            const btnText = document.getElementById('modalBtn').textContent;
+            if (btnText === "PLAY AGAIN" || btnText === "RETRY LEVEL") {
+                if (btnText === "PLAY AGAIN") level = 1;
+            } else if (btnText === "NEXT LEVEL") {
+                level++;
+            }
+            loadLevel(level);
+            document.getElementById('modalOverlay').classList.add('hidden');
+            gameActive = true;
+        });
+
+        loadLevel(1);
+        render();
+    </script>
+</body>
+</html>
